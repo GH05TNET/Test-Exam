@@ -328,11 +328,75 @@
     document.getElementById('overlay').classList.add('show');
     siteLog(title + ' — ' + msg, 'err');
   }
-  // Auto request fullscreen on load (like exam sites)
+  
+  // ==== UPDATED: Auto fullscreen on page load with retry mechanism ====
+  async function enterFullScreen() {
+    try {
+      // Pehle check karo agar already fullscreen mein hai to
+      if (document.fullscreenElement) {
+        console.log('Already in fullscreen mode');
+        return;
+      }
+      
+      // Fullscreen request with options for better compatibility
+      const element = document.documentElement;
+      
+      // Modern browsers ke liye
+      if (element.requestFullscreen) {
+        await element.requestFullscreen();
+      } 
+      // Safari ke liye
+      else if (element.webkitRequestFullscreen) {
+        await element.webkitRequestFullscreen();
+      }
+      // Firefox ke liye
+      else if (element.mozRequestFullScreen) {
+        await element.mozRequestFullScreen();
+      }
+      // IE ke liye
+      else if (element.msRequestFullscreen) {
+        await element.msRequestFullscreen();
+      }
+      
+      console.log('Fullscreen activated successfully');
+      log('✓ Auto fullscreen activated on page load', 'ok');
+      
+    } catch (err) {
+      console.warn('Fullscreen request failed:', err);
+      log('✗ Auto fullscreen failed: ' + err.message, 'warn');
+      
+      // Retry after user interaction
+      setTimeout(() => {
+        log('Click anywhere to enter fullscreen mode...', 'info');
+        
+        const retryHandler = async () => {
+          try {
+            await document.documentElement.requestFullscreen();
+            log('✓ Fullscreen activated after click', 'ok');
+            document.removeEventListener('click', retryHandler);
+          } catch (e) {
+            // Ignore retry errors
+          }
+        };
+        
+        document.addEventListener('click', retryHandler, { once: true });
+      }, 1000);
+    }
+  }
+
+  // Page load par fullscreen activate karo
   window.addEventListener('load', () => {
-    setTimeout(() => {
-      document.documentElement.requestFullscreen().catch(() => {});
-    }, 500);
+    // Thoda delay do taaki page properly load ho jaye
+    setTimeout(enterFullScreen, 500);
+  });
+
+  // Agar user manually fullscreen exit kare to wapas try karo
+  document.addEventListener('fullscreenchange', () => {
+    if (!document.fullscreenElement) {
+      log('Fullscreen exited - will retry', 'warn');
+      // Thoda wait karo phir se try karne ke liye
+      setTimeout(enterFullScreen, 100);
+    }
   });
 </script>
 
