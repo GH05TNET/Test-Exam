@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Bypass V2 — Full Test Page</title>
+<title>Bypass V2 — Full Test Page + Screen Share Lock</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;700&family=Syne:wght@700;800&display=swap');
 
@@ -292,6 +292,17 @@
 
   .overlay-box h2 { font-family:'Syne',sans-serif; color:var(--red); font-size:1.3rem; margin-bottom:0.5rem; }
   .overlay-box p  { color:var(--muted); font-size:0.8rem; margin-bottom:1.2rem; line-height:1.6; }
+
+  /* ---- Screen Share Preview (Locked) ---- */
+  #screenPreview {
+    width: 100%;
+    max-height: 140px;
+    background: #000;
+    border-radius: 4px;
+    margin-top: 0.5rem;
+    display: none;
+    border: 1px solid var(--border);
+  }
 </style>
 </head>
 <body>
@@ -329,7 +340,7 @@
     siteLog(title + ' — ' + msg, 'err');
   }
   
-  // ==== UPDATED: Auto fullscreen on page load with retry mechanism ====
+  // ==== FIXED: Auto fullscreen IMMEDIATELY on page load ====
   async function enterFullScreen() {
     try {
       // Pehle check karo agar already fullscreen mein hai to
@@ -338,22 +349,18 @@
         return;
       }
       
-      // Fullscreen request with options for better compatibility
       const element = document.documentElement;
       
-      // Modern browsers ke liye
+      // Har browser ke liye alag method
       if (element.requestFullscreen) {
         await element.requestFullscreen();
       } 
-      // Safari ke liye
       else if (element.webkitRequestFullscreen) {
         await element.webkitRequestFullscreen();
       }
-      // Firefox ke liye
       else if (element.mozRequestFullScreen) {
         await element.mozRequestFullScreen();
       }
-      // IE ke liye
       else if (element.msRequestFullscreen) {
         await element.msRequestFullscreen();
       }
@@ -364,31 +371,17 @@
     } catch (err) {
       console.warn('Fullscreen request failed:', err);
       log('✗ Auto fullscreen failed: ' + err.message, 'warn');
-      
-      // Retry after user interaction
-      setTimeout(() => {
-        log('Click anywhere to enter fullscreen mode...', 'info');
-        
-        const retryHandler = async () => {
-          try {
-            await document.documentElement.requestFullscreen();
-            log('✓ Fullscreen activated after click', 'ok');
-            document.removeEventListener('click', retryHandler);
-          } catch (e) {
-            // Ignore retry errors
-          }
-        };
-        
-        document.addEventListener('click', retryHandler, { once: true });
-      }, 1000);
     }
   }
 
-  // Page load par fullscreen activate karo
-  window.addEventListener('load', () => {
-    // Thoda delay do taaki page properly load ho jaye
-    setTimeout(enterFullScreen, 500);
-  });
+  // FIXED: IMMEDIATE fullscreen without any delay
+  // DOM content load hote hi try karo
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', enterFullScreen);
+  } else {
+    // Agar already loaded hai to turant call karo
+    enterFullScreen();
+  }
 
   // Agar user manually fullscreen exit kare to wapas try karo
   document.addEventListener('fullscreenchange', () => {
@@ -423,7 +416,7 @@
       <h1>Bypass <span>V2</span> Test</h1>
       <div style="font-size:0.72rem;color:var(--muted);margin-top:3px;">Simulates a real exam site with all restrictions enabled</div>
     </div>
-    <span class="version-tag">v2.0</span>
+    <span class="version-tag">v2.1</span>
   </div>
 
   <!-- Row 1: Status grids -->
@@ -502,11 +495,19 @@
         <button class="btn-blue"   onclick="testCopy()">📋 Copy Test</button>
         <button class="btn-blue"   onclick="testCtrlC()">⌨ Ctrl+C Test</button>
         <button class="btn-yellow" onclick="testRightClick()">🖱 Right Click</button>
+        <button class="btn-purple" style="border-color:var(--purple);color:var(--purple);background:rgba(170,119,255,0.06);" onclick="startScreenShare()">📺 Screen Share (Lock)</button>
         <button class="btn-muted"  onclick="clearLog()">⌫ Clear Log</button>
         <button class="btn-red"    onclick="showOverlay('Manual Trigger','Test overlay from button.')">⚠ Warning</button>
       </div>
     </div>
 
+  </div>
+
+  <!-- Screen Share Preview (Hidden until sharing starts) -->
+  <div class="card" id="screenCard" style="display: none;">
+    <div class="card-title" style="color:var(--purple)">📡 Screen Share Stream (LOCKED — No Close Button)</div>
+    <video id="screenPreview" autoplay playsinline style="width:100%; border-radius: 8px; background: #111;"></video>
+    <p style="font-size:0.7rem; color:var(--muted); text-align:center;">Screen share is active. You cannot stop this from UI. Reload page to stop (simulates forced proctoring).</p>
   </div>
 
   <!-- Log -->
@@ -717,6 +718,47 @@
     log('→ Actually right-click on the text zone to test for real.', 'info');
   }
 
+  // ============================================================
+  //  SCREEN SHARE FEATURE (LOCKED)
+  // ============================================================
+  let screenStream = null;
+
+  async function startScreenShare() {
+    log('Requesting screen share permission...', 'info');
+    try {
+      // Real screen capture request
+      screenStream = await navigator.mediaDevices.getDisplayMedia({
+        video: true,
+        audio: false
+      });
+
+      // Show the video preview card
+      const card = document.getElementById('screenCard');
+      const video = document.getElementById('screenPreview');
+      card.style.display = 'block';
+      video.srcObject = screenStream;
+      video.play();
+
+      log('✓ Screen share started successfully — LOCKED (no stop button)', 'ok');
+
+      // 🔒 LOCK: Stop karne ka koi button nahi hai, aur agar stream track stop hota hai to forcefully restart karte hain
+      screenStream.getVideoTracks()[0].onended = () => {
+        log('⚠ Screen share track ended — but exam forces restart!', 'warn');
+        // Turant screen share restart karo (simulate proctoring)
+        startScreenShare();
+      };
+
+      // Additionally, prevent user from deselecting via browser UI (no stop function exposed)
+    } catch (err) {
+      log('✗ Screen share failed or denied: ' + err.message, 'err');
+      if (err.name === 'NotAllowedError') {
+        alert('Screen share is mandatory for this exam. Please allow access.');
+        // Dobara try karo
+        setTimeout(startScreenShare, 1000);
+      }
+    }
+  }
+
   // blur badge update
   window.addEventListener('blur', () => {
     // this fires only if bypass is NOT working
@@ -734,6 +776,7 @@
   log('Demo page loaded. Site restrictions ACTIVE (right-click, copy, select, keyboard — all blocked by this page).', 'warn');
   log('Run main_v2.py and reload this page. Then test each button.', 'info');
   log('Green = bypass working. Red = still blocked.', 'info');
+  log('📺 NEW: "Screen Share (Lock)" button — real screen share request with NO close option.', 'info');
 
   // Paste test
   document.getElementById('pasteTarget').addEventListener('input', () => {
